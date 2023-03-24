@@ -31,21 +31,28 @@ def query_by_vector(vector, index, limit=None):
 	text_list = [texts[x] for x in id_list] if texts else ['ERROR']*len(id_list)
 	return id_list, dist_list, text_list
 
-def get_vectors(text_list):
+def get_vectors(text_list, model_embed):
 	"transform texts into embedding vectors"
+
 	batch_size = 128
 	vectors = []
 	usage = Counter()
 	for i,texts in enumerate(batch(text_list, batch_size)):
-		resp = ai.embeddings(texts)
+		resp = ai.embeddings(texts, model_embed=model_embed)
+		# resp = ai.embeddings_local(texts)
 		v = resp['vectors']
-		u = resp['usage']
-		u['call_cnt'] = 1
-		usage.update(u)
+		# u = resp['usage']
+		# u['call_cnt'] = 1
+		# usage.update(u)
 		vectors.extend(v)
-	return {'vectors':vectors, 'usage':dict(usage), 'model':resp['model']}
 
-def index_file(f, filename, fix_text=False, frag_size=0, cache=None):
+		# vectors - lista embedding-a za svaki fragment teksta (npr. embedding za svaki paragraf)
+		# jedan openai embedding - lista dimenzije 1536
+	
+	return {'vectors':vectors, 'usage':dict(usage), 'model':resp['model_embed']}
+
+def index_file(f, filename, fix_text=False, frag_size=0, cache=None, model=None, model_embed=None):
+
 	"return vector index (dictionary) for a given PDF file"
 	# calc md5
 	h = hashlib.md5()
@@ -62,17 +69,18 @@ def index_file(f, filename, fix_text=False, frag_size=0, cache=None):
 		for i in range(len(pages)):
 			pages[i] = fix_text_problems(pages[i])
 	texts = split_pages_into_fragments(pages, frag_size)
+
 	t2 = now()
 	if cache:
 		cache_key = f'get_vectors:{md5}:{frag_size}:{fix_text}'
-		resp = cache.call(cache_key, get_vectors, texts)
+		resp = cache.call(cache_key, get_vectors, texts, model_embed)
 	else:
-		resp = get_vectors(texts)
+		resp = get_vectors(texts, model_embed)
 	
 	t3 = now()
 	vectors = resp['vectors']
 	summary_prompt = f"{texts[0]}\n\nDescribe the document from which the fragment is extracted. Omit any details.\n\n" # TODO: move to prompts.py
-	summary = ai.complete(summary_prompt)
+	summary = ai.complete(summary_prompt, model=model)
 	t4 = now()
 	usage = resp['usage']
 	out = {}
@@ -143,21 +151,21 @@ def fix_text_problems(text):
 	text = re.sub('\s+[-]\s+','',text) # word continuation in the next line
 	return text
 
-def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde_prompt=None, limit=None, n_before=1, n_after=1, model=None):
+def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde_prompt=None, limit=None, n_before=1, n_after=1, model=None, model_embed=None):
 	"get dictionary with the answer for the given question (text)."
 	out = {}
 	
 	if hyde:
 		# TODO: model param
-		out['hyde'] = hypotetical_answer(text, index, hyde_prompt=hyde_prompt, temperature=temperature)
+		out['hyde'] = hypotetical_answer(text, index, hyde_prompt=hyde_prompt, temperature=temperature, model=model)
 		# TODO: usage
 	
 	# RANK FRAGMENTS
 	if hyde:
-		resp = ai.embedding(out['hyde']['text'])
+		resp = ai.embedding(out['hyde']['text'], model_embed=model_embed)
 		# TODO: usage
 	else:
-		resp = ai.embedding(text)
+		resp = ai.embedding(text, model_embed=model_embed)
 		# TODO: usage
 	v = resp['vector']
 	t0 = now()
@@ -220,14 +228,14 @@ def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde
 	out['text'] = answer
 	return out
 
-def hypotetical_answer(text, index, hyde_prompt=None, temperature=0.0):
+def hypotetical_answer(text, index, hyde_prompt=None, temperature=0.0, model=None):
 	"get hypotethical answer for the question (text)"
 	hyde_prompt = hyde_prompt or 'Write document that answers the question.'
 	prompt = f"""
 	{hyde_prompt}
 	Question: "{text}"
 	Document:""" # TODO: move to prompts.py
-	resp = ai.complete(prompt, temperature=temperature)
+	resp = ai.complete(prompt, temperature=temperature, model=model)
 	return resp
 
 

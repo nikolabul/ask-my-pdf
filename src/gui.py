@@ -1,6 +1,10 @@
-__version__ = "0.4.8.2"
+__version__ = "0.4.8"
+from dotenv import load_dotenv
+
+
 app_name = "Ask my PDF"
 
+load_dotenv()
 
 # BOILERPLATE
 
@@ -18,6 +22,7 @@ header3 = st.empty() # for errors / messages
 
 import prompts
 import model
+import ai
 import storage
 import feedback
 import cache
@@ -25,11 +30,13 @@ import os
 
 from time import time as now
 
+ss['api_key'] = os.environ['OPENAI_KEY']
+
 # HANDLERS
 
 def on_api_key_change():
 	api_key = ss.get('api_key') or os.getenv('OPENAI_KEY')
-	model.use_key(api_key) # TODO: empty api_key
+	model.use_key(api_key)
 	#
 	if 'data_dict' not in ss: ss['data_dict'] = {} # used only with DictStorage
 	ss['storage'] = storage.get_storage(api_key, data_dict=ss['data_dict'])
@@ -42,10 +49,10 @@ def on_api_key_change():
 	ss['debug']['storage.folder'] = ss['storage'].folder
 	ss['debug']['storage.class'] = ss['storage'].__class__.__name__
 
+if 'user' not in ss:
+	# community user
+	on_api_key_change()
 
-ss['community_user'] = os.getenv('COMMUNITY_USER')
-if 'user' not in ss and ss['community_user']:
-	on_api_key_change() # use community key
 
 # COMPONENTS
 
@@ -62,38 +69,33 @@ def ui_info():
 	st.markdown(f"""
 	# Ask my PDF
 	version {__version__}
-	
-	Question answering system built on top of GPT3.
 	""")
-	ui_spacer(1)
-	st.write("Made by [Maciej Obarski](https://www.linkedin.com/in/mobarski/).", unsafe_allow_html=True)
-	ui_spacer(1)
-	st.markdown("""
-		Thank you for your interest in my application.
-		Please be aware that this is only a Proof of Concept system
-		and may contain bugs or unfinished features.
-		If you like this app you can ❤️ [follow me](https://twitter.com/KerbalFPV)
-		on Twitter for news and updates.
-		""")
-	ui_spacer(1)
+	# ui_spacer(1)
+	# st.write("Made by [Maciej Obarski](https://www.linkedin.com/in/mobarski/).", unsafe_allow_html=True)
+	# ui_spacer(1)
+	# st.markdown("""
+	# 	Thank you for your interest in my application.
+	# 	Please be aware that this is only a Proof of Concept system
+	# 	and may contain bugs or unfinished features.
+	# 	If you like this app you can ❤️ [follow me](https://twitter.com/KerbalFPV)
+	# 	on Twitter for news and updates.
+	# 	""")
+	# ui_spacer(1)
 	st.markdown('Source code can be found [here](https://github.com/mobarski/ask-my-pdf).')
 
 def ui_api_key():
-	if ss['community_user']:
-		st.write('## 1. Optional - enter your OpenAI API key')
-		t1,t2 = st.tabs(['community version','enter your own API key'])
-		with t1:
-			pct = model.community_tokens_available_pct()
-			st.write(f'Community tokens available: :{"green" if pct else "red"}[{int(pct)}%]')
-			st.progress(pct/100)
-			st.write('Refresh in: ' + model.community_tokens_refresh_in())
-			st.write('You can sign up to OpenAI and/or create your API key [here](https://platform.openai.com/account/api-keys)')
-			ss['community_pct'] = pct
-			ss['debug']['community_pct'] = pct
-		with t2:
-			st.text_input('OpenAI API key', type='password', key='api_key', on_change=on_api_key_change, label_visibility="collapsed")
-	else:
-		st.write('## 1. Enter your OpenAI API key')
+	st.write('## 1. Optional - enter your OpenAI API key')
+	t1,t2 = st.tabs(['community version','enter your own API key'])
+	t2 = st.tabs(['enter your own API key'])
+	with t1:
+		pct = model.community_tokens_available_pct()
+		st.write(f'Community tokens available: :{"green" if pct else "red"}[{int(pct)}%]')
+		st.progress(pct/100)
+		st.write('Refresh in: ' + model.community_tokens_refresh_in())
+		st.write('You can sign up to OpenAI and/or create your API key [here](https://platform.openai.com/account/api-keys)')
+		ss['community_pct'] = pct
+		ss['debug']['community_pct'] = pct
+	with t2:
 		st.text_input('OpenAI API key', type='password', key='api_key', on_change=on_api_key_change, label_visibility="collapsed")
 
 def index_pdf_file():
@@ -101,7 +103,7 @@ def index_pdf_file():
 		ss['filename'] = ss['pdf_file'].name
 		if ss['filename'] != ss.get('fielname_done'): # UGLY
 			with st.spinner(f'indexing {ss["filename"]}'):
-				index = model.index_file(ss['pdf_file'], ss['filename'], fix_text=ss['fix_text'], frag_size=ss['frag_size'], cache=ss['cache'])
+				index = model.index_file(ss['pdf_file'], ss['filename'], fix_text=ss['fix_text'], frag_size=ss['frag_size'], cache=ss['cache'], model=ss['model'], model_embed=ss['model_embed'])
 				ss['index'] = index
 				debug_index()
 				ss['filename_done'] = ss['filename'] # UGLY
@@ -121,7 +123,8 @@ def debug_index():
 
 def ui_pdf_file():
 	st.write('## 2. Upload or select your PDF file')
-	disabled = not ss.get('user') or (not ss.get('api_key') and not ss.get('community_pct',0))
+	# disabled = not ss.get('user') or (not ss.get('api_key') and not ss.get('community_pct',0))
+	disabled = False
 	t1,t2 = st.tabs(['UPLOAD','SELECT'])
 	with t1:
 		st.file_uploader('pdf file', type='pdf', key='pdf_file', disabled=disabled, on_change=index_pdf_file, label_visibility="collapsed")
@@ -149,7 +152,7 @@ def ui_pdf_file():
 		ss['spin_select_file'] = st.empty()
 
 def ui_show_debug():
-	st.checkbox('show debug section', key='show_debug')
+	st.checkbox('show debug section', key='show_debug', value=True)
 
 def ui_fix_text():
 	st.checkbox('fix common PDF problems', value=True, key='fix_text')
@@ -167,9 +170,9 @@ def ui_fragments():
 	st.number_input('fragments after',  0, 3, 1, key='n_frag_after')  # TODO: pass to model
 
 def ui_model():
-	models = ['gpt-3.5-turbo','text-davinci-003','text-curie-001']
+	models = ['gpt-3.5-turbo','text-davinci-003','text-curie-001','GPT-NeoXT-Chat-Base-20B']
 	st.selectbox('main model', models, key='model', disabled=not ss.get('api_key'))
-	st.selectbox('embedding model', ['text-embedding-ada-002'], key='model_embed') # FOR FUTURE USE
+	st.selectbox('embedding model', ['text-embedding-ada-002','all-mpnet-base-v2', 'multi-qa-distilbert-cos-v1', 'all-MiniLM-L6-v2'], key='model_embed') # FOR FUTURE USE
 
 def ui_hyde():
 	st.checkbox('use HyDE', value=True, key='use_hyde')
@@ -209,20 +212,21 @@ def ui_debug():
 
 def b_ask():
 	c1,c2,c3,c4,c5 = st.columns([2,1,1,2,2])
-	if c2.button('👍', use_container_width=True, disabled=not ss.get('output')):
-		ss['feedback'].send(+1, ss, details=ss['send_details'])
-		ss['feedback_score'] = ss['feedback'].get_score()
-	if c3.button('👎', use_container_width=True, disabled=not ss.get('output')):
-		ss['feedback'].send(-1, ss, details=ss['send_details'])
-		ss['feedback_score'] = ss['feedback'].get_score()
-	score = ss.get('feedback_score',0)
-	c5.write(f'feedback score: {score}')
-	c4.checkbox('send details', True, key='send_details',
-			help='allow question and the answer to be stored in the ask-my-pdf feedback database')
+	# if c2.button('👍', use_container_width=True, disabled=not ss.get('output')):
+	# 	ss['feedback'].send(+1, ss, details=ss['send_details'])
+	# 	ss['feedback_score'] = ss['feedback'].get_score()
+	# if c3.button('👎', use_container_width=True, disabled=not ss.get('output')):
+	# 	ss['feedback'].send(-1, ss, details=ss['send_details'])
+	# 	ss['feedback_score'] = ss['feedback'].get_score()
+	# score = ss.get('feedback_score',0)
+	# c5.write(f'feedback score: {score}')
+	# c4.checkbox('send details', False, key='send_details',
+			# help='allow question and the answer to be stored in the ask-my-pdf feedback database')
 	#c1,c2,c3 = st.columns([1,3,1])
 	#c2.radio('zzz',['👍',r'...',r'👎'],horizontal=True,label_visibility="collapsed")
 	#
-	disabled = (not ss.get('api_key') and not ss.get('community_pct',0)) or not ss.get('index')
+	# disabled = (not ss.get('api_key') and not ss.get('community_pct',0)) or not ss.get('index')
+	disabled = False
 	if c1.button('get answer', disabled=disabled, type='primary', use_container_width=True):
 		question = ss.get('question','')
 		temperature = ss.get('temperature', 0.0)
@@ -247,6 +251,7 @@ def b_ask():
 					n_before=n_before,
 					n_after=n_after,
 					model=ss['model'],
+					model_embed=ss['model_embed'],
 				)
 		usage = resp.get('usage',{})
 		usage['cnt'] = 1
@@ -301,26 +306,29 @@ def output_add(q,a):
 	new = f'#### {q}\n{a}\n\n'
 	ss['output'] = new + ss['output']
 
+
+
 # LAYOUT
 
 with st.sidebar:
 	ui_info()
 	ui_spacer(2)
-	with st.expander('advanced'):
-		ui_show_debug()
-		b_clear()
-		ui_model()
-		ui_fragments()
-		ui_fix_text()
-		ui_hyde()
-		ui_hyde_summary()
-		ui_temperature()
-		b_reload()
-		ui_task_template()
-		ui_task()
-		ui_hyde_prompt()
+	# with st.expander('advanced'):
+	ui_show_debug()
+	b_clear()
+	ui_model()
+	ui_fragments()
+	ui_fix_text()
+	ui_hyde()
+	ui_hyde_summary()
+	ui_temperature()
+	b_reload()
+	ui_task_template()
+	ui_task()
+	ui_hyde_prompt()
+	# ai.initialize_models()
 
-ui_api_key()
+# ui_api_key()
 ui_pdf_file()
 ui_question()
 ui_hyde_answer()
