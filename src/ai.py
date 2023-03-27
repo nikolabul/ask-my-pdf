@@ -50,6 +50,16 @@ with st.spinner('Enabling GPU and Importing local models'):
 	torch.cuda.empty_cache()
 
 
+def format_response(response):
+    # find first appearance of <human> in the response
+    human_1 = response.find('<human>')
+    # find second appearance of <human> in the response
+    human_2 = response.find('<human>', human_1+1)
+    # find first appearance of <bot> in the response
+    bot_1 = response.find('<bot>')
+    # extract the response
+    return response[bot_1:human_2].replace('<bot>:', '')
+
 def use_key(key):
 	openai.use_key(key)
 
@@ -74,7 +84,7 @@ def complete(text, **kw):
 		# print(response[0]['generated_text'])
 		
 		resp = {}
-		resp['text'] = response[0]['generated_text']
+		resp['text'] = format_response(response[0]['generated_text'])
 		resp['usage'] = {'tokens': 0, 'characters': 0, 'requests': 0}
 
 		# clear cuda cache
