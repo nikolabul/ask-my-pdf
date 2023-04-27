@@ -170,7 +170,7 @@ def ui_fragments():
 	st.number_input('fragments after',  0, 3, 1, key='n_frag_after')  # TODO: pass to model
 
 def ui_model():
-	models = ['gpt-3.5-turbo','text-davinci-003','text-curie-001','GPT-NeoXT-Chat-Base-20B']
+	models = ['gpt-3.5-turbo','text-davinci-003','text-curie-001','GPT-NeoXT-Chat-Base-20B','StableLM', 'LLaMA']
 	st.selectbox('main model', models, key='model', disabled=not ss.get('api_key'))
 	st.selectbox('embedding model', ['text-embedding-ada-002','all-mpnet-base-v2', 'multi-qa-distilbert-cos-v1', 'all-MiniLM-L6-v2'], key='model_embed') # FOR FUTURE USE
 
